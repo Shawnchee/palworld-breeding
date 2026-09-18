@@ -84,6 +84,8 @@
         <option value="">All elements</option>
       </select>
       <label class="check inline"><input type="checkbox" id="all-variant" /> Variants only</label>
+      <label class="check inline"><input type="checkbox" id="all-strongest" /> Strongest first</label>
+      <select id="all-minrarity" aria-label="Minimum rarity"><option value="0">Any rarity</option><option value="5">Rarity 5+</option><option value="7">Rarity 7+</option><option value="9">Rarity 9+</option><option value="20">Legendary</option></select>
     </div>
     <div id="all-meta" class="meta"></div>
     <div class="table-wrap"><table>
@@ -102,6 +104,7 @@
       <button id="next">Next →</button>
     </div>
   </section>
+<div id="pal-modal" class="modal" hidden><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-name"><button id="pm-close" class="modal-x" aria-label="Close">×</button><div id="pm-body"></div></div></div>
 </main>
 
 <footer class="wrap foot">

@@ -40,6 +40,109 @@ function targetPower(a, b) { return Math.floor((a.power + b.power + 1) / 2); }
 
 function elBadges(p) { return p.elements.map((e) => `<span class="el">${e}</span>`).join(""); }
 
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
+function rarityLabel(p) { return p && p.rarity === 20 ? "Legendary" : `Rarity ${p ? p.rarity : "?"}`; }
+
+const STRONGEST_TITLE = "Strongest = highest base-stat total (datamined base HP+ATK+DEF), not a live-damage guarantee";
+
+let STAT_MAX = null;
+function statMaxes() {
+  if (STAT_MAX) return STAT_MAX;
+  let hp = 1, atk = 1, def = 1;
+  for (const p of PALS) {
+    if (p.hp > hp) hp = p.hp;
+    if (p.atk > atk) atk = p.atk;
+    if (p.def > def) def = p.def;
+  }
+  STAT_MAX = { hp, atk, def };
+  return STAT_MAX;
+}
+
+function isStrongestOn() {
+  const el = $("all-strongest");
+  return !!(el && el.checked);
+}
+
+function minRarityValue() {
+  const el = $("all-minrarity");
+  if (!el || el.value == null || el.value === "") return 0;
+  const v = Number(el.value);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+// ---- Pal detail modal (teammate owns #pal-modal markup/CSS; all nodes guarded) ----
+window.closePalDetail = function () {
+  const m = $("pal-modal");
+  if (!m) return;
+  m.hidden = true;
+  if (m.classList) m.classList.remove("open");
+  m.setAttribute("aria-hidden", "true");
+};
+
+window.openPalDetail = function (code) {
+  const p = BY_CODE[code];
+  if (!p) return;
+  const body = $("pm-body");
+  const modal = $("pal-modal");
+  if (!body || !modal) return;
+  const max = statMaxes();
+  const pct = (v, m) => `${Math.max(0, Math.min(100, (v / m) * 100)).toFixed(1)}%`;
+  const statRow = (label, v, m) =>
+    `<div class="stat"><span>${label}</span><span class="bar"><i style="width:${pct(v, m)}"></i></span><b>${esc(v)}</b></div>`;
+  let kvRows = `<div class="kv"><dt>Rarity</dt><dd>${esc(rarityLabel(p))}</dd></div>` +
+    `<div class="kv"><dt>Size</dt><dd>${esc(p.size)}</dd></div>` +
+    `<div class="kv"><dt>Egg</dt><dd>${esc(p.egg)}</dd></div>` +
+    `<div class="kv"><dt>Power</dt><dd>${esc(p.power)}</dd></div>` +
+    `<div class="kv"><dt>Male rate</dt><dd>♂ ${esc(p.male)}%</dd></div>`;
+  if (p.ride) {
+    kvRows += `<div class="kv"><dt>Rides</dt><dd>${p.mount && p.mount.type ? esc(p.mount.type) : "Yes"}${p.mount && p.mount.speed != null ? ` ${esc(p.mount.speed)}` : ""}</dd></div>`;
+  }
+  if (p.partner && (p.partner.name || p.partner.desc)) {
+    kvRows += `<div class="kv"><dt>Partner</dt><dd><strong>${esc(p.partner.name || "Partner skill")}</strong>${p.partner.desc ? `<div class="dim">${esc(p.partner.desc)}</div>` : ""}</dd></div>`;
+  }
+  const workEntries = (p.work && typeof p.work === "object") ? Object.entries(p.work) : [];
+  if (workEntries.length) {
+    kvRows += `<div class="kv"><dt>Work</dt><dd>${workEntries.map(([skill, lv]) => `<span class="badge">${esc(skill)} Lv${esc(lv)}</span>`).join(" ")}</dd></div>`;
+  }
+  body.innerHTML =
+    `<div class="pm-head">${palImg(p)}<div><h2 id="pm-name">${esc(p.name)}</h2>` +
+    `<p class="pm-sub">#${esc(p.paldex)}${p.variant ? ` · variant` : ""}</p>` +
+    `<div class="chip-row">${elBadges(p)}${p.variant ? ` <span class="badge variant">variant</span>` : ""}` +
+    ` <span class="el${p.rarity === 20 ? " legendary" : ""}">${esc(rarityLabel(p))}</span></div></div></div>` +
+    `<div class="pm-sec"><h3>Base stats</h3><div class="stats">` +
+    statRow("HP", p.hp, max.hp) + statRow("ATK", p.atk, max.atk) + statRow("DEF", p.def, max.def) +
+    `<div class="stat"><span>Total</span><span class="bar"><i style="width:${pct(p.total, max.hp + max.atk + max.def)}"></i></span><b>${esc(p.total)}</b></div>` +
+    `</div></div>` +
+    `<div class="pm-sec"><h3>Details</h3><dl>` + kvRows + `</dl></div>` +
+    `<div style="margin-top:8px; display:flex; gap:12px; flex-wrap:wrap;">` +
+    `<button class="link" id="pm-find">Find parents →</button>` +
+    `<button class="link" id="pm-useA">Use as Parent A</button></div>`;
+  modal.hidden = false;
+  if (modal.classList) modal.classList.add("open");
+  modal.removeAttribute("aria-hidden");
+  const findBtn = document.getElementById("pm-find");
+  if (findBtn) findBtn.onclick = () => {
+    window.closePalDetail();
+    switchTab("find");
+    const t = $("target");
+    if (t) t.value = p.name;
+    doFind();
+  };
+  const useBtn = document.getElementById("pm-useA");
+  if (useBtn) useBtn.onclick = () => {
+    window.closePalDetail();
+    switchTab("breed");
+    const a = $("parentA");
+    if (a) a.value = p.name;
+    doBreed();
+  };
+};
+
 const TIP_TEXT = "Target power = floor((A power + B power + 1) / 2). The game picks the Pal whose power is closest to this number (special pairs override it). It is NOT a success chance — the species result is guaranteed.";
 function tipHtml() {
   return ` <span class="tip" tabindex="0" data-tip="${TIP_TEXT}">?</span>`;
@@ -137,6 +240,7 @@ async function load() {
     fetch("data/specials.json").then((r) => r.json()),
   ]);
   PALS = pals;
+  STAT_MAX = null;
   BY_CODE = Object.fromEntries(pals.map((p) => [p.code, p]));
   BY_NAME = Object.fromEntries(pals.map((p) => [p.name.toLowerCase(), p]));
   LOOKUP = lookup;
@@ -181,8 +285,8 @@ function doBreed() {
   const special = isSpecial(a.code, b.code, c.code);
   box.className = "result";
   box.innerHTML = `
-    <div class="parents-line dim">${palImg(a, true)} ${a.name} <span class="dim">(power ${a.power})</span> + ${palImg(b, true)} ${b.name} <span class="dim">(power ${b.power})</span> → Target power ${avg}${tipHtml()}</div>
-    <div class="child">${palImg(c)} ${c.name} <span class="dim">#${c.paldex}</span>
+    <div class="parents-line dim"><span class="clickable" data-pal="${a.code}">${palImg(a, true)} ${esc(a.name)}</span> <span class="dim">(power ${a.power})</span> + <span class="clickable" data-pal="${b.code}">${palImg(b, true)} ${esc(b.name)}</span> <span class="dim">(power ${b.power})</span> → Target power ${avg}${tipHtml()}</div>
+    <div class="child"><span class="clickable" data-pal="${c.code}">${palImg(c)} ${esc(c.name)}</span> <span class="dim">#${c.paldex}</span>
       ${c.variant ? `<span class="badge variant">variant</span>` : ""}
       ${special ? `<span class="badge special">special</span>` : `<span class="badge formula">formula</span>`}
     </div>
@@ -206,9 +310,9 @@ function doFind() {
   if (!pairs.length) { box.className = "result empty"; box.textContent = `No ${onlySpecial ? "special " : ""}pairs make ${t.name}.`; return; }
   pairs.sort((x, y) => x.avg - y.avg || (x.pa.name + x.pb.name).localeCompare(y.pa.name + y.pb.name));
   box.className = "result";
-  box.innerHTML = `<div class="dim"><strong>${pairs.length}</strong> pair${pairs.length > 1 ? "s" : ""} → <strong>${t.name}</strong> ${onlySpecial ? "(special only)" : ""}</div>` +
+  box.innerHTML = `<div class="dim"><strong>${pairs.length}</strong> pair${pairs.length > 1 ? "s" : ""} → <strong>${esc(t.name)}</strong> ${onlySpecial ? "(special only)" : ""} <span class="dim">· total ${esc(t.total)}</span> <span class="badge">${esc(rarityLabel(t))}</span></div>` +
     pairs.slice(0, 500).map((x, i) =>
-      `<div class="pair">${palImg(x.pa, true)}${x.pa.name} + ${palImg(x.pb, true)}${x.pb.name} <span class="dim">target power ${x.avg}</span>
+      `<div class="pair"><span class="clickable" data-pal="${x.pa.code}">${palImg(x.pa, true)}${esc(x.pa.name)}</span> + <span class="clickable" data-pal="${x.pb.code}">${palImg(x.pb, true)}${esc(x.pb.name)}</span> <span class="dim">target power ${x.avg}</span>
        ${x.special ? `<span class="badge special">special</span>` : ""}
        <button class="link" data-i="${i}">use →</button></div>`
     ).join("") + (pairs.length > 500 ? `<div class="dim">Showing first 500 of ${pairs.length}.</div>` : "");
@@ -228,11 +332,19 @@ let sortKey = null, sortDir = 1;
 const SORT_LABEL = { a: "Parent A", b: "Parent B", child: "Child", avg: "Target power" };
 
 function sortedRows(rows) {
-  if (!sortKey) return rows;
+  const strongest = isStrongestOn();
+  if (!sortKey && !strongest) return rows;
   const get = {
     a: (x) => x.pa.name, b: (x) => x.pb.name, child: (x) => x.pc.name, avg: (x) => x.avg,
   }[sortKey];
   return rows.slice().sort((x, y) => {
+    if (strongest) {
+      const tx = x.pc ? x.pc.total : -Infinity, ty = y.pc ? y.pc.total : -Infinity;
+      if (ty !== tx) return ty - tx; // child total desc
+      const px = x.pc ? x.pc.power : Infinity, py = y.pc ? y.pc.power : Infinity;
+      if (px !== py) return px - py; // tiebreak power asc
+    }
+    if (!get) return x.child.localeCompare(y.child);
     const gx = get(x), gy = get(y);
     const c = typeof gx === "number" ? gx - gy : String(gx).localeCompare(String(gy));
     return c * sortDir || x.child.localeCompare(y.child);
@@ -244,11 +356,13 @@ function applyAllFilter() {
   const m = $("all-method").value;
   const el = $("all-element").value;
   const varOnly = $("all-variant").checked;
+  const minRar = minRarityValue();
   FILTERED = COMBOS.filter((x) => {
     if (m === "special" && !x.special) return false;
     if (m === "formula" && x.special) return false;
     if (el && !x.pc.elements.includes(el)) return false;
     if (varOnly && !x.pc.variant) return false;
+    if (minRar > 0 && (!x.pc || x.pc.rarity < minRar)) return false;
     if (!q) return true;
     return x.pa.name.toLowerCase().includes(q) || x.pb.name.toLowerCase().includes(q) || x.pc.name.toLowerCase().includes(q);
   });
@@ -275,9 +389,9 @@ function renderAll() {
   page = Math.min(Math.max(0, page), pages - 1);
   const slice = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   $("all-body").innerHTML = slice.map((x) =>
-    `<tr><td><span class="cell-pal">${palImg(x.pa, true)}${x.pa.name}</span></td>` +
-    `<td><span class="cell-pal">${palImg(x.pb, true)}${x.pb.name}</span></td>` +
-    `<td><span class="cell-pal">${palImg(x.pc, true)}<strong>${x.pc.name}</strong></span></td><td>${x.avg}</td>
+    `<tr><td><span class="cell-pal clickable" data-pal="${x.a}">${palImg(x.pa, true)}${esc(x.pa.name)}</span></td>` +
+    `<td><span class="cell-pal clickable" data-pal="${x.b}">${palImg(x.pb, true)}${esc(x.pb.name)}</span></td>` +
+    `<td><span class="cell-pal clickable" data-pal="${x.child}">${palImg(x.pc, true)}<strong>${esc(x.pc.name)}</strong></span></td><td>${x.avg}</td>
      <td>${x.special ? `<span class="badge special">special</span>` : `<span class="badge formula">formula</span>`}</td></tr>`
   ).join("");
   $("all-meta").textContent = `${total.toLocaleString()} combos · page ${page + 1} of ${pages}`;
@@ -307,6 +421,39 @@ $("all-search").addEventListener("input", applyAllFilter);
 $("all-method").onchange = applyAllFilter;
 $("all-element").onchange = applyAllFilter;
 $("all-variant").onchange = applyAllFilter;
+// Teammate-owned filter controls (may not exist yet — guard all).
+(function () {
+  const st = $("all-strongest");
+  if (st) {
+    if (!st.getAttribute("title")) st.setAttribute("title", STRONGEST_TITLE);
+    const lbl = st.closest ? st.closest("label") : null;
+    if (lbl && !lbl.getAttribute("title")) lbl.setAttribute("title", STRONGEST_TITLE);
+    st.addEventListener("change", () => { page = 0; renderAll(); });
+  }
+  const mr = $("all-minrarity");
+  if (mr) mr.addEventListener("change", applyAllFilter);
+})();
+// Teammate-owned modal nodes (may not exist yet — guard all).
+(function () {
+  const c = $("pm-close");
+  if (c) c.onclick = () => window.closePalDetail();
+  const m = $("pal-modal");
+  if (m) m.addEventListener("click", (e) => { if (e.target === m) window.closePalDetail(); });
+})();
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const m = $("pal-modal");
+  if (!m || m.hidden) return;
+  window.closePalDetail();
+});
+// Global delegation: any [data-pal="CODE"] opens the detail (validated).
+document.addEventListener("click", (e) => {
+  const t = e.target && e.target.closest ? e.target.closest("[data-pal]") : null;
+  if (!t) return;
+  const code = t.getAttribute("data-pal");
+  if (!code || !BY_CODE[code]) return;
+  window.openPalDetail(code);
+});
 $("prev").onclick = () => { page--; renderAll(); };
 $("next").onclick = () => { page++; renderAll(); };
 document.querySelectorAll(".th-sort").forEach((btn) => {
