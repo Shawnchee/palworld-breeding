@@ -123,7 +123,12 @@ function createCombo(inputId, onPick) {
     else if (e.key === "Enter") { e.preventDefault(); if (state.active >= 0 && state.items[state.active]) select(state.items[state.active].code); else state.onPick(); }
     else if (e.key === "Escape") { e.preventDefault(); close(); input.blur(); }
   });
-  input.addEventListener("blur", () => setTimeout(close, 120));
+  input.addEventListener("blur", () => setTimeout(() => {
+    // only close if focus left the whole combo (lets the panel scrollbar drag without closing)
+    if (!panel.contains(document.activeElement) && document.activeElement !== input) close();
+  }, 120));
+  // mousedown on panel chrome (e.g. scrollbar) must not blur the input, or the panel closes mid-scroll
+  panel.addEventListener("mousedown", (e) => { if (!e.target.closest(".combo-opt")) e.preventDefault(); });
   return state;
 }
 
