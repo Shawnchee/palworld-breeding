@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pal Breeding Lab — Palworld 1.0 Calculator</title>
+<meta name="description" content="Pure Palworld breeding calculator: A+B → child, reverse lookup, and full 44,850-combo chart. 299 Pals, Palworld 1.0 data." />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Pal Breeding Lab</h1>
+    <p class="sub">Pure breeding calculator · <strong id="stat-pals">299</strong> Pals · <strong id="stat-combos">44,850</strong> combos · Palworld 1.0</p>
+    <nav class="tabs" aria-label="Calculator tabs">
+      <button data-tab="breed" class="active">Breed</button>
+      <button data-tab="find">Find parents</button>
+      <button data-tab="all">All combos</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- BREED -->
+  <section id="tab-breed" class="panel active" aria-label="Breed calculator">
+    <div class="breed-grid">
+      <div class="field">
+        <label id="labelA" for="parentA">Parent A</label>
+        <div class="combo" data-combo>
+          <input id="parentA" type="text" placeholder="e.g. Lamball" autocomplete="off" role="combobox"
+            aria-expanded="false" aria-autocomplete="list" aria-controls="parentA-list" aria-labelledby="labelA" />
+          <div class="combo-panel" id="parentA-list" role="listbox" aria-labelledby="labelA" hidden></div>
+        </div>
+      </div>
+      <button id="swap" title="Swap parents" aria-label="Swap parents">⇄</button>
+      <div class="field">
+        <label id="labelB" for="parentB">Parent B</label>
+        <div class="combo" data-combo>
+          <input id="parentB" type="text" placeholder="e.g. Cattiva" autocomplete="off" role="combobox"
+            aria-expanded="false" aria-autocomplete="list" aria-controls="parentB-list" aria-labelledby="labelB" />
+          <div class="combo-panel" id="parentB-list" role="listbox" aria-labelledby="labelB" hidden></div>
+        </div>
+      </div>
+    </div>
+    <details class="how">
+      <summary>How breeding works</summary>
+      <p>Target power = <code>floor((A power + B power + 1) / 2)</code>. The game picks the Pal whose
+      power is closest to this number. <strong>Special pairs override it</strong> — certain parent
+      combinations always produce a fixed child regardless of power. A pair is “special” only when it
+      appears in the special-combo list; everything else follows the formula.</p>
+      <p class="dim">The species result is guaranteed — target power is <strong>not</strong> a success chance.
+      The only percentage shown anywhere is “♂ male rate”.</p>
+    </details>
+    <div id="breed-result" class="result empty">Pick two parents to see the child.</div>
+  </section>
+
+  <!-- FIND -->
+  <section id="tab-find" class="panel" aria-label="Find parents">
+    <div class="field">
+      <label id="labelT" for="target">Target Pal (child you want)</label>
+      <div class="combo" data-combo>
+        <input id="target" type="text" placeholder="e.g. Anubis" autocomplete="off" role="combobox"
+          aria-expanded="false" aria-autocomplete="list" aria-controls="target-list" aria-labelledby="labelT" />
+        <div class="combo-panel" id="target-list" role="listbox" aria-labelledby="labelT" hidden></div>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="only-special" /> Special combos only</label>
+    <div id="find-result" class="result empty">Pick a target to list every parent pair.</div>
+  </section>
+
+  <!-- ALL -->
+  <section id="tab-all" class="panel" aria-label="All combinations">
+    <div class="filters">
+      <input id="all-search" placeholder="Filter by any Pal name… (e.g. Frostallion)" aria-label="Filter combos by Pal name" />
+      <select id="all-method" aria-label="Filter by method">
+        <option value="all">All methods</option>
+        <option value="special">Special only</option>
+        <option value="formula">Formula only</option>
+      </select>
+      <select id="all-element" aria-label="Filter by child element">
+        <option value="">All elements</option>
+      </select>
+      <label class="check inline"><input type="checkbox" id="all-variant" /> Variants only</label>
+    </div>
+    <div id="all-meta" class="meta"></div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th><button class="th-sort" data-sort="a">Parent A</button></th>
+        <th><button class="th-sort" data-sort="b">Parent B</button></th>
+        <th><button class="th-sort" data-sort="child">Child</button></th>
+        <th><button class="th-sort" data-sort="avg">Target power <span class="tip" tabindex="0" data-tip="Target power = floor((A power + B power + 1) / 2). The game picks the Pal whose power is closest to this number (special pairs override it). It is NOT a success chance — the species result is guaranteed.">?</span></button></th>
+        <th>Method</th>
+      </tr></thead>
+      <tbody id="all-body"></tbody>
+    </table></div>
+    <div class="pager">
+      <button id="prev">← Prev</button>
+      <span id="page-info"></span>
+      <button id="next">Next →</button>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>Fan-made breeding tool. Not affiliated with Pocketpair. Data: datamined 1.0 combo table via
+  <a href="https://github.com/tylercamp/palcalc" target="_blank" rel="noopener">PalCalc</a> (v26) /
+  <a href="https://github.com/JohnnyDalvi/Palworld_Smart_Breeder" target="_blank" rel="noopener">Smart_Breeder dataset</a>.
+  Base-pal concept from <a href="https://github.com/mlg404/palworld-paldex-api" target="_blank" rel="noopener">palworld-paldex-api</a>.
+  Breeding is deterministic: child = Pal closest to <code>floor((A+B+1)/2)</code>, plus special overrides.</p>
+  <p class="dim">Pal icons via the akpersad hatchery dataset; game art © Pocketpair, used here for fan purposes.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
