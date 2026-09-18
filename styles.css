@@ -70,11 +70,6 @@ input:focus, select:focus, button:focus-visible, summary:focus-visible {
 .combo-opt .nm { font-weight: 600; }
 .combo-opt .dex { color: var(--mut); }
 .combo-opt .pw { margin-left: auto; color: var(--mut); font-size: 12px; white-space: nowrap; }
-.combo-more {
-  position: sticky; bottom: -4px; background: var(--card);
-  border-top: 1px solid var(--line); margin: 4px -4px -4px; padding: 8px 12px;
-  color: var(--mut); font-size: 13px;
-}
 .combo-none { padding: 10px; color: var(--mut); font-size: 14px; }
 
 /* thumbnails */

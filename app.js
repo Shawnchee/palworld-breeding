@@ -1,7 +1,6 @@
 let PALS = [], BY_CODE = {}, BY_NAME = {}, LOOKUP = {}, SPECIAL_SET = new Set();
 let COMBOS = [], FILTERED = [], page = 0;
 const PAGE_SIZE = 100;
-const ROW_CAP = 60;
 
 const $ = (id) => document.getElementById(id);
 
@@ -71,14 +70,13 @@ function createCombo(inputId, onPick) {
       : PALS.slice();
     state.items = items;
     state.active = items.length ? 0 : -1;
-    const shown = items.slice(0, ROW_CAP);
+    const shown = items;
     let html = shown.map((p, i) =>
       `<button type="button" class="combo-opt${i === state.active ? " active" : ""}" role="option" ` +
       `id="${inputId}-opt-${i}" aria-selected="${i === state.active}" data-code="${p.code}">` +
       `${palImg(p, true)}<span class="nm">${p.name}</span><span class="dex">#${p.paldex}</span>` +
       `<span class="pw">power ${p.power}</span></button>`
     ).join("");
-    if (items.length > ROW_CAP) html += `<div class="combo-more">${(items.length - ROW_CAP).toLocaleString()} more… keep typing to narrow</div>`;
     if (!items.length) html = `<div class="combo-none">No Pals match “${input.value.trim()}”.</div>`;
     panel.innerHTML = html;
     panel.hidden = false;
@@ -118,8 +116,8 @@ function createCombo(inputId, onPick) {
       if ((e.key === "ArrowDown" || e.key === "Enter") && PALS.length) { e.preventDefault(); open(); }
       return;
     }
-    if (e.key === "ArrowDown") { e.preventDefault(); if (state.items.length) { state.active = (state.active + 1) % Math.min(state.items.length, ROW_CAP); highlight(); } }
-    else if (e.key === "ArrowUp") { e.preventDefault(); if (state.items.length) { state.active = (state.active - 1 + Math.min(state.items.length, ROW_CAP)) % Math.min(state.items.length, ROW_CAP); highlight(); } }
+    if (e.key === "ArrowDown") { e.preventDefault(); if (state.items.length) { state.active = (state.active + 1) % state.items.length; highlight(); } }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (state.items.length) { state.active = (state.active - 1 + state.items.length) % state.items.length; highlight(); } }
     else if (e.key === "Enter") { e.preventDefault(); if (state.active >= 0 && state.items[state.active]) select(state.items[state.active].code); else state.onPick(); }
     else if (e.key === "Escape") { e.preventDefault(); close(); input.blur(); }
   });
