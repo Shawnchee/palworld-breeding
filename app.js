@@ -267,6 +267,14 @@ async function load() {
     o.value = e; o.textContent = e;
     sel.appendChild(o);
   }
+  const csel = $("combat-element");
+  if (csel) {
+    for (const e of order.filter((x) => present.has(x))) {
+      const o = document.createElement("option");
+      o.value = e; o.textContent = e;
+      csel.appendChild(o);
+    }
+  }
 
   // precompute flat combos for All tab
   COMBOS = Object.entries(LOOKUP).map(([k, child]) => {
@@ -276,9 +284,11 @@ async function load() {
     return { a, b, child, avg, special: isSpecial(a, b, child), pa, pb, pc };
   });
   FILTERED = COMBOS;
+  seedRosterIfNew();
   renderAll();
   renderBase();
   renderMounts();
+  renderCombat();
   if (typeof renderRoster === "function") renderRoster();
   try { parseShare(); } catch (err) {}
 }
@@ -478,12 +488,39 @@ function renderBase() {
   box.className = "result";
   box.innerHTML = skills.map((s) => {
     const top = topForSkill(s, 3);
+    let roster = null;
+    try { roster = (typeof getRoster === "function") ? getRoster() : null; } catch (e) { roster = null; }
     const rows = top.map((p) =>
       `<div class="pair"><span class="cell-pal clickable" data-pal="${p.code}">${palImg(p, true)}${esc(p.name)}</span>` +
-      `<span class="badge">Lv${esc(p.work[s])}</span><span class="dim">total ${esc(p.total)}</span></div>`
+      `<span class="badge">Lv${esc(p.work[s])}</span><span class="dim">total ${esc(p.total)}</span>` +
+      (roster && roster.has(p.code) ? `<span class="badge formula">owned</span>` : "")
     ).join("") || `<div class="dim">None.</div>`;
     return `<div style="margin-bottom:12px"><strong>${esc(s)}</strong>${rows}</div>`;
   }).join("");
+}
+
+// ---- Combat tab: base-stat ranking (no move/DPS data) ----
+function renderCombat() {
+  const box = $("combat-result");
+  if (!box) return;
+  const mode = $("combat-mode") ? $("combat-mode").value : "overall";
+  const el = $("combat-element") ? $("combat-element").value : "";
+  const ownedOnly = $("combat-owned") && $("combat-owned").checked;
+  let roster = null;
+  try { roster = (typeof getRoster === "function") ? getRoster() : null; } catch (e) { roster = null; }
+  const key = mode === "attack" ? ((p) => p.atk) : mode === "tank" ? ((p) => p.hp + p.def) : ((p) => p.total);
+  const list = PALS.filter((p) =>
+    (!el || p.elements.includes(el)) && (!ownedOnly || (roster && roster.has(p.code)))
+  ).sort((a, b) => key(b) - key(a)).slice(0, 15);
+  if (!list.length) { box.className = "result empty"; box.textContent = "No pals match. Add more to your roster or clear filters."; return; }
+  box.className = "result";
+  const lbl = mode === "attack" ? "ATK" : mode === "tank" ? "HP+DEF" : "Total";
+  box.innerHTML = `<div class="dim">Top ${list.length} by ${lbl}${el ? ` - ${esc(el)}` : ""}${ownedOnly ? " - owned" : ""}</div>` +
+    list.map((p, i) =>
+      `<div class="pair"><span class="dim">${i + 1}.</span><span class="cell-pal clickable" data-pal="${p.code}">${palImg(p, true)}${esc(p.name)}</span>` +
+      `${elBadges(p)}<span class="dim">HP ${p.hp} / ATK ${p.atk} / DEF ${p.def} - Total ${p.total}</span>` +
+      (roster && roster.has(p.code) ? `<span class="badge formula">owned</span>` : "") + `</div>`
+    ).join("");
 }
 
 // ---- Mounts tab: rideable grouped by type, speed desc ----
@@ -516,7 +553,15 @@ function planBaseTeam() {
   const sel = Array.from(document.querySelectorAll("#plan-skills input:checked")).map((c) => c.value);
   if (!sel.length) { box.className = "result empty"; box.textContent = "Select at least one skill."; return; }
   const need = new Set(sel);
-  const ranked = PALS.filter((p) => p.work).slice().sort((a, b) => b.total - a.total);
+  const ownedOnly = $("plan-owned") && $("plan-owned").checked;
+  let pool = PALS.filter((p) => p.work);
+  if (ownedOnly) {
+    let roster = null;
+    try { roster = (typeof getRoster === "function") ? getRoster() : null; } catch (e) { roster = null; }
+    if (!roster || !roster.size) { box.className = "result empty"; box.textContent = "Owned only is on but your roster is empty. Add pals in the Chain tab."; return; }
+    pool = pool.filter((p) => roster.has(p.code));
+  }
+  const ranked = pool.slice().sort((a, b) => b.total - a.total);
   const team = [];
   while (need.size) {
     let best = null, bestCover = [];
@@ -558,6 +603,24 @@ function getRoster() {
 function saveRoster(set) {
   try { localStorage.setItem(ROSTER_KEY, JSON.stringify(Array.from(set))); } catch (err) {}
 }
+// Starter pals: rarity 1 non-variants (commons everyone catches early).
+// Seeds once on first run only; never touches an existing or cleared roster.
+function seedRosterIfNew() {
+  try {
+    if (localStorage.getItem(ROSTER_KEY) !== null) return;
+    if (!PALS || !PALS.length) return;
+    saveRoster(new Set(PALS.filter((p) => p.rarity === 1 && !p.variant).map((p) => p.code)));
+  } catch (err) {}
+}
+function resetRoster() {
+  if (!PALS || !PALS.length) return;
+  saveRoster(new Set(PALS.filter((p) => p.rarity === 1 && !p.variant).map((p) => p.code)));
+  renderRoster();
+}
+function clearRoster() {
+  saveRoster(new Set());
+  renderRoster();
+}
 function renderRoster() {
   const box = $("roster-list");
   if (!box) return;
@@ -565,7 +628,8 @@ function renderRoster() {
   const hasData = PALS && PALS.length > 0;
   const codes = Array.from(set).filter((c) => !hasData || BY_CODE[c]);
   if (codes.length !== set.size) { set = new Set(codes); saveRoster(set); }
-  if (!codes.length) { box.innerHTML = '<span class="dim">No owned Pals yet.</span>'; return; }
+  if (!codes.length) { box.innerHTML = '<span class="dim">No owned Pals yet.</span>'; }
+  else {
   box.innerHTML = codes.map((c) => {
     const p = BY_CODE[c];
     const nm = p ? p.name : c;
@@ -575,6 +639,9 @@ function renderRoster() {
   box.querySelectorAll("[data-rm]").forEach((b) => {
     b.onclick = (e) => { if (e.stopPropagation) e.stopPropagation(); removeRoster(b.getAttribute("data-rm")); };
   });
+  }
+  const cnt = $("roster-count");
+  if (cnt) cnt.textContent = codes.length ? `${codes.length} owned` : "";
 }
 function addRosterFromInput() {
   const inp = $("roster-add");
@@ -796,6 +863,14 @@ document.querySelectorAll(".th-sort").forEach((btn) => {
   if (bs) bs.addEventListener("input", renderBase);
   const pb = $("plan-base");
   if (pb) pb.addEventListener("click", planBaseTeam);
+  const po = $("plan-owned");
+  if (po) po.addEventListener("change", planBaseTeam);
+  const cm = $("combat-mode");
+  if (cm) cm.addEventListener("change", renderCombat);
+  const ce = $("combat-element");
+  if (ce) ce.addEventListener("change", renderCombat);
+  const co = $("combat-owned");
+  if (co) co.addEventListener("change", renderCombat);
 })();
 (function () {
   const addBtn = $("roster-add-btn");
@@ -804,6 +879,10 @@ document.querySelectorAll(".th-sort").forEach((btn) => {
   if (addInp) addInp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addRosterFromInput(); } });
   const go = $("chain-go");
   if (go) go.addEventListener("click", doChain);
+  const rr = $("roster-reset");
+  if (rr) rr.addEventListener("click", resetRoster);
+  const rc = $("roster-clear");
+  if (rc) rc.addEventListener("click", clearRoster);
   const tInp = $("chain-target");
   if (tInp) tInp.addEventListener("keydown", (e) => { if (e.key === "Enter") doChain(); });
   try {

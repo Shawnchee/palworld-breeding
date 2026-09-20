@@ -21,6 +21,7 @@
       <button data-tab="all">All combos</button>
       <button data-tab="base">Base</button>
       <button data-tab="mounts">Mounts</button>
+      <button data-tab="combat">Combat</button>
       <button data-tab="chain">Chain</button>
     </nav>
   </div>
@@ -147,6 +148,7 @@
       <label class="check inline"><input type="checkbox" value="Transporting" /> Transporting</label>
     </div>
     <div style="margin-top:8px"><button id="plan-base">Plan team</button></div>
+    <label class="check inline"><input type="checkbox" id="plan-owned" /> Owned only (use my Chain roster)</label>
     <div id="plan-result" class="result empty">Select skills and plan.</div>
   </section>
 
@@ -154,6 +156,23 @@
   <section id="tab-mounts" class="panel" aria-label="Mount rankings">
     <p class="dim">Rideable Pals grouped by Ground / Flying / Water, sorted by speed.</p>
     <div id="mounts-result" class="result empty">Loading mounts.</div>
+  </section>
+
+  <!-- COMBAT -->
+  <section id="tab-combat" class="panel" aria-label="Combat rankings">
+    <p class="dim">Base-stat ranking only (ATK / HP+DEF / Total). No move or DPS data in this dataset.</p>
+    <div class="filters">
+      <select id="combat-mode" aria-label="Combat ranking mode">
+        <option value="overall">Overall (Total)</option>
+        <option value="attack">Attackers (ATK)</option>
+        <option value="tank">Tanks (HP+DEF)</option>
+      </select>
+      <select id="combat-element" aria-label="Filter by element">
+        <option value="">All elements</option>
+      </select>
+      <label class="check inline"><input type="checkbox" id="combat-owned" /> Owned only</label>
+    </div>
+    <div id="combat-result" class="result empty">Loading combat data.</div>
   </section>
 
   <!-- CHAIN -->
@@ -170,6 +189,8 @@
       </div>
     </div>
     <div id="roster-list" class="roster-list"></div>
+    <div class="dim" style="margin-top:8px"><span id="roster-count"></span> Starter pals are preloaded. High-rarity pals are never added by default.</div>
+    <div style="margin-top:8px; display:flex; gap:8px;"><button id="roster-reset">Reset to starters</button><button id="roster-clear">Clear all</button></div>
     <div class="field">
       <label id="labelC" for="chain-target">Chain target (Pal you want)</label>
       <div class="chain-row">
