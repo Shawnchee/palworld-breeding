@@ -1,4 +1,4 @@
-let PALS = [], BY_CODE = {}, BY_NAME = {}, LOOKUP = {}, SPECIAL_SET = new Set();
+let PALS = [], BY_CODE = {}, BY_NAME = {}, LOOKUP = {}, SPECIAL_SET = new Set(), GENDER_MAP = {};
 let COMBOS = [], FILTERED = [], page = 0;
 const PAGE_SIZE = 100;
 
@@ -248,6 +248,12 @@ async function load() {
     const k = `${pairKey(s.parent_a_code, s.parent_b_code)}=${s.child_code}`;
     SPECIAL_SET.add(k);
   }
+  window.GENDER_MAP = window.GENDER_MAP || {};
+  for (const s of specials) {
+    if (!s.gender_locked) continue;
+    const k = `${pairKey(s.parent_a_code, s.parent_b_code)}=${s.child_code}`;
+    window.GENDER_MAP[k] = { aCode: s.parent_a_code, bCode: s.parent_b_code, p1: s.p1_gender, p2: s.p2_gender, aName: s.parent_a, bName: s.parent_b };
+  }
   $("stat-pals").textContent = PALS.length;
   $("stat-combos").textContent = Object.keys(LOOKUP).length.toLocaleString();
 
@@ -271,6 +277,10 @@ async function load() {
   });
   FILTERED = COMBOS;
   renderAll();
+  renderBase();
+  renderMounts();
+  if (typeof renderRoster === "function") renderRoster();
+  try { parseShare(); } catch (err) {}
 }
 
 // ---- Breed tab ----
@@ -283,23 +293,52 @@ function doBreed() {
   if (!c) { box.className = "result empty"; box.textContent = "No result for that pair (data gap)."; return; }
   const avg = targetPower(a, b);
   const special = isSpecial(a.code, b.code, c.code);
+  const g = (window.GENDER_MAP || {})[`${pairKey(a.code, b.code)}=${c.code}`];
+  const locked = !!g;
+  const gl = (v) => (v === "FEMALE" ? "F" : "M");
+  const ga = g ? gl(a.code === g.aCode ? g.p1 : g.p2) : "";
+  const gb = g ? gl(b.code === g.bCode ? g.p2 : g.p1) : "";
+  const lockNote = locked ? `Needs ${esc(a.code === g.aCode ? g.aName : g.bName)}(${ga}) + ${esc(b.code === g.bCode ? g.bName : g.aName)}(${gb})` : "";
+  const parentsAvg = Math.round((a.total + b.total) / 2);
+  const delta = c.total - parentsAvg;
+  const deltaTxt = (delta >= 0 ? "+" : "") + delta;
+  let maleWarn = "";
+  if (c.male <= 20) maleWarn = ` <span class="dim">low male rate - may need many eggs for a male</span>`;
+  else if (c.male >= 80) maleWarn = ` <span class="dim">high male rate - may need many eggs for a female</span>`;
   box.className = "result";
   box.innerHTML = `
     <div class="parents-line dim"><span class="clickable" data-pal="${a.code}">${palImg(a, true)} ${esc(a.name)}</span> <span class="dim">(power ${a.power})</span> + <span class="clickable" data-pal="${b.code}">${palImg(b, true)} ${esc(b.name)}</span> <span class="dim">(power ${b.power})</span> → Target power ${avg}${tipHtml()}</div>
     <div class="child"><span class="clickable" data-pal="${c.code}">${palImg(c)} ${esc(c.name)}</span> <span class="dim">#${c.paldex}</span>
       ${c.variant ? `<span class="badge variant">variant</span>` : ""}
       ${special ? `<span class="badge special">special</span>` : `<span class="badge formula">formula</span>`}
+      ${locked ? `<span class="badge special">gender-locked</span>` : ""}
     </div>
-    <div>${elBadges(c)} <span class="dim">power ${c.power} · ♂ male rate ${c.male}%</span></div>
+    ${locked ? `<div class="dim">${lockNote}</div>` : ""}
+    <div class="dim">HP ${c.hp} / ATK ${c.atk} / DEF ${c.def} - Total ${c.total} (${deltaTxt} vs parents avg)</div>
+    <div>${elBadges(c)} <span class="dim">power ${c.power} · ♂ male rate ${c.male}%</span>${maleWarn}</div>
     <div style="margin-top:8px"><button class="link" id="see-parents">See all ${COMBOS.filter((x) => x.child === c.code).length} ways to make ${c.name} →</button></div>`;
   $("see-parents").onclick = () => {
     switchTab("find");
     $("target").value = c.name;
     doFind();
   };
+  try { updateShare(); } catch (err) {}
 }
 
 // ---- Find tab ----
+function genderNote(x) {
+  if (!x.special) return "";
+  const g = (window.GENDER_MAP || {})[`${pairKey(x.a, x.b)}=${x.child}`];
+  if (!g) return "";
+  const abbr = (v) => v === "FEMALE" ? "F" : v === "MALE" ? "M" : "?";
+  const ga = abbr(x.a === g.aCode ? g.p1 : g.p2);
+  const gb = abbr(x.b === g.bCode ? g.p2 : g.p1);
+  if (ga === "?" && gb === "?") return "";
+  const na = (x.a === g.aCode ? g.aName : g.bName) || x.pa.name;
+  const nb = (x.b === g.bCode ? g.bName : g.aName) || x.pb.name;
+  return ` <span class="dim">needs ${ga} ${esc(na)} + ${gb} ${esc(nb)}</span>`;
+}
+
 function doFind() {
   const t = resolvePal($("target").value);
   const box = $("find-result");
@@ -308,12 +347,18 @@ function doFind() {
   let pairs = COMBOS.filter((x) => x.child === t.code);
   if (onlySpecial) pairs = pairs.filter((x) => x.special);
   if (!pairs.length) { box.className = "result empty"; box.textContent = `No ${onlySpecial ? "special " : ""}pairs make ${t.name}.`; return; }
-  pairs.sort((x, y) => x.avg - y.avg || (x.pa.name + x.pb.name).localeCompare(y.pa.name + y.pb.name));
+  const sortEl = $("find-sort");
+  if (sortEl && sortEl.value === "easy") {
+    pairs.sort((x, y) => ((x.pa.rarity + x.pb.rarity) - (y.pa.rarity + y.pb.rarity)) || ((x.pa.power + x.pb.power) - (y.pa.power + y.pb.power)) || (x.pa.name + x.pb.name).localeCompare(y.pa.name + y.pb.name));
+  } else {
+    pairs.sort((x, y) => x.avg - y.avg || (x.pa.name + x.pb.name).localeCompare(y.pa.name + y.pb.name));
+  }
+  var roster = null; try { roster = (typeof getRoster === 'function') ? getRoster() : null; } catch (e) { roster = null; }
   box.className = "result";
-  box.innerHTML = `<div class="dim"><strong>${pairs.length}</strong> pair${pairs.length > 1 ? "s" : ""} → <strong>${esc(t.name)}</strong> ${onlySpecial ? "(special only)" : ""} <span class="dim">· total ${esc(t.total)}</span> <span class="badge">${esc(rarityLabel(t))}</span></div>` +
+  box.innerHTML = `<div class="dim"><strong>${pairs.length}</strong> pair${pairs.length > 1 ? "s" : ""} → <strong>${esc(t.name)}</strong> ${onlySpecial ? "(special only)" : ""} <span class="dim">· total ${esc(t.total)} · male ${esc(t.male)}%</span> <span class="badge">${esc(rarityLabel(t))}</span></div>` +
     pairs.slice(0, 500).map((x, i) =>
-      `<div class="pair"><span class="clickable" data-pal="${x.pa.code}">${palImg(x.pa, true)}${esc(x.pa.name)}</span> + <span class="clickable" data-pal="${x.pb.code}">${palImg(x.pb, true)}${esc(x.pb.name)}</span> <span class="dim">target power ${x.avg}</span>
-       ${x.special ? `<span class="badge special">special</span>` : ""}
+      `<div class="pair"><span class="clickable" data-pal="${x.pa.code}">${palImg(x.pa, true)}${esc(x.pa.name)}</span> + <span class="clickable" data-pal="${x.pb.code}">${palImg(x.pb, true)}${esc(x.pb.name)}</span> <span class="dim">target power ${x.avg}</span> <span class="dim">R${x.pa.rarity}+R${x.pb.rarity}</span>
+       ${x.special ? `<span class="badge special">special</span>` : ""}${genderNote(x)}${roster && roster.has(x.pa.code) && roster.has(x.pb.code) ? `<span class="badge formula">owned</span>` : ""}
        <button class="link" data-i="${i}">use →</button></div>`
     ).join("") + (pairs.length > 500 ? `<div class="dim">Showing first 500 of ${pairs.length}.</div>` : "");
   box.querySelectorAll("button.link").forEach((btn) => {
@@ -325,17 +370,19 @@ function doFind() {
       doBreed();
     };
   });
+  try { updateShare(); } catch (err) {}
 }
 
 // ---- All tab ----
 let sortKey = null, sortDir = 1;
-const SORT_LABEL = { a: "Parent A", b: "Parent B", child: "Child", avg: "Target power" };
+const SORT_LABEL = { a: "Parent A", b: "Parent B", child: "Child", avg: "Target power", hp: "HP", atk: "ATK", def: "DEF", total: "Total" };
 
 function sortedRows(rows) {
   const strongest = isStrongestOn();
   if (!sortKey && !strongest) return rows;
   const get = {
     a: (x) => x.pa.name, b: (x) => x.pb.name, child: (x) => x.pc.name, avg: (x) => x.avg,
+    hp: (x) => (x.pc ? x.pc.hp : -1), atk: (x) => (x.pc ? x.pc.atk : -1), def: (x) => (x.pc ? x.pc.def : -1), total: (x) => (x.pc ? x.pc.total : -1),
   }[sortKey];
   return rows.slice().sort((x, y) => {
     if (strongest) {
@@ -355,16 +402,29 @@ function applyAllFilter() {
   const q = $("all-search").value.trim().toLowerCase();
   const m = $("all-method").value;
   const el = $("all-element").value;
+  const pel = $("all-pelement") ? $("all-pelement").value : "";
   const varOnly = $("all-variant").checked;
   const minRar = minRarityValue();
+  const work = $("all-work") ? $("all-work").value : "";
+  const worklv = $("all-worklv") ? Number($("all-worklv").value) || 0 : 0;
+  const egg = $("all-egg") ? $("all-egg").value : "";
+  const size = $("all-size") ? $("all-size").value : "";
+  const ride = $("all-ride") ? $("all-ride").value : "";
   FILTERED = COMBOS.filter((x) => {
     if (m === "special" && !x.special) return false;
     if (m === "formula" && x.special) return false;
     if (el && !x.pc.elements.includes(el)) return false;
+    if (pel && !(x.pa.elements.includes(pel) || x.pb.elements.includes(pel))) return false; // either parent matches
     if (varOnly && !x.pc.variant) return false;
     if (minRar > 0 && (!x.pc || x.pc.rarity < minRar)) return false;
+    // child trait filters, all guarded (some pals lack work or mount)
+    if (work && (!x.pc || !x.pc.work || !(x.pc.work[work] >= Math.max(1, worklv)))) return false;
+    if (egg && (!x.pc || x.pc.egg !== egg)) return false;
+    if (size && (!x.pc || x.pc.size !== size)) return false;
+    if (ride === "rides" && (!x.pc || x.pc.ride !== true)) return false;
+    if ((ride === "Ground" || ride === "Flying" || ride === "Water") && (!x.pc || !x.pc.mount || x.pc.mount.type !== ride)) return false;
     if (!q) return true;
-    return x.pa.name.toLowerCase().includes(q) || x.pb.name.toLowerCase().includes(q) || x.pc.name.toLowerCase().includes(q);
+    return x.pa.name.toLowerCase().includes(q) || x.pb.name.toLowerCase().includes(q) || x.pc.name.toLowerCase().includes(q) || (x.pc.partner && (((x.pc.partner.name || "").toLowerCase().includes(q)) || ((x.pc.partner.desc || "").toLowerCase().includes(q)))); // also match partner skill
   });
   page = 0;
   renderAll();
@@ -388,14 +448,236 @@ function renderAll() {
   const total = rows.length, pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   page = Math.min(Math.max(0, page), pages - 1);
   const slice = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  var roster = null; try { roster = (typeof getRoster === 'function') ? getRoster() : null; } catch (e) { roster = null; }
   $("all-body").innerHTML = slice.map((x) =>
     `<tr><td><span class="cell-pal clickable" data-pal="${x.a}">${palImg(x.pa, true)}${esc(x.pa.name)}</span></td>` +
     `<td><span class="cell-pal clickable" data-pal="${x.b}">${palImg(x.pb, true)}${esc(x.pb.name)}</span></td>` +
-    `<td><span class="cell-pal clickable" data-pal="${x.child}">${palImg(x.pc, true)}<strong>${esc(x.pc.name)}</strong></span></td><td>${x.avg}</td>
-     <td>${x.special ? `<span class="badge special">special</span>` : `<span class="badge formula">formula</span>`}</td></tr>`
+    `<td><span class="cell-pal clickable" data-pal="${x.child}">${palImg(x.pc, true)}<strong>${esc(x.pc.name)}</strong></span><div>${elBadges(x.pc)}</div><div class="dim">${esc(rarityLabel(x.pc))}${x.pc.variant ? " + variant" : ""} | male ${esc(x.pc.male)}%</div></td><td>${x.avg}</td><td>${esc(x.pc.hp)}</td><td>${esc(x.pc.total)}</td>
+     <td>${x.special ? `<span class="badge special">special</span>` : `<span class="badge formula">formula</span>`}${roster && roster.has(x.a) && roster.has(x.b) ? `<span class="badge formula">owned</span>` : ""}</td></tr>`
   ).join("");
   $("all-meta").textContent = `${total.toLocaleString()} combos · page ${page + 1} of ${pages}`;
   $("page-info").textContent = `${page + 1} / ${pages}`;
+}
+
+// ---- Base tab: top 3 per work skill by level then total ----
+const WORK_ORDER = ["Kindling", "Watering", "Planting", "Generating Electricity", "Handiwork", "Gathering", "Lumbering", "Mining", "Medicine Production", "Cooling", "Farming", "Transporting"];
+
+function topForSkill(skill, n) {
+  return PALS.filter((p) => p.work && p.work[skill] != null)
+    .sort((a, b) => (b.work[skill] - a.work[skill]) || (b.total - a.total))
+    .slice(0, n || 3);
+}
+
+function renderBase() {
+  const box = $("base-result");
+  if (!box) return;
+  const inp = $("base-search");
+  const q = inp && inp.value ? inp.value.trim().toLowerCase() : "";
+  const skills = q ? WORK_ORDER.filter((s) => s.toLowerCase().includes(q)) : WORK_ORDER;
+  if (!skills.length) { box.className = "result empty"; box.textContent = `No work skills match "${inp.value.trim()}".`; return; }
+  box.className = "result";
+  box.innerHTML = skills.map((s) => {
+    const top = topForSkill(s, 3);
+    const rows = top.map((p) =>
+      `<div class="pair"><span class="cell-pal clickable" data-pal="${p.code}">${palImg(p, true)}${esc(p.name)}</span>` +
+      `<span class="badge">Lv${esc(p.work[s])}</span><span class="dim">total ${esc(p.total)}</span></div>`
+    ).join("") || `<div class="dim">None.</div>`;
+    return `<div style="margin-bottom:12px"><strong>${esc(s)}</strong>${rows}</div>`;
+  }).join("");
+}
+
+// ---- Mounts tab: rideable grouped by type, speed desc ----
+function renderMounts() {
+  const box = $("mounts-result");
+  if (!box) return;
+  const groups = {};
+  for (const p of PALS) {
+    if (!p.ride || !p.mount) continue;
+    const t = (p.mount.type || "Other");
+    (groups[t] = groups[t] || []).push(p);
+  }
+  const order = Object.keys(groups).sort();
+  if (!order.length) { box.className = "result empty"; box.textContent = "No rideable Pals."; return; }
+  box.className = "result";
+  box.innerHTML = order.map((t) => {
+    const list = groups[t].sort((a, b) => ((b.mount && b.mount.speed) || 0) - ((a.mount && a.mount.speed) || 0));
+    const rows = list.map((p) =>
+      `<div class="pair"><span class="cell-pal clickable" data-pal="${p.code}">${palImg(p, true)}${esc(p.name)}</span>` +
+      `<span class="dim">speed ${esc(p.mount.speed != null ? p.mount.speed : "?")}</span></div>`
+    ).join("");
+    return `<div style="margin-bottom:12px"><strong>${esc(t)}</strong> <span class="dim">${list.length}</span>${rows}</div>`;
+  }).join("");
+}
+
+// ---- Base planner: greedy set-cover over selected skills ----
+function planBaseTeam() {
+  const box = $("plan-result");
+  if (!box) return;
+  const sel = Array.from(document.querySelectorAll("#plan-skills input:checked")).map((c) => c.value);
+  if (!sel.length) { box.className = "result empty"; box.textContent = "Select at least one skill."; return; }
+  const need = new Set(sel);
+  const ranked = PALS.filter((p) => p.work).slice().sort((a, b) => b.total - a.total);
+  const team = [];
+  while (need.size) {
+    let best = null, bestCover = [];
+    for (const p of ranked) {
+      if (team.includes(p)) continue;
+      const cover = sel.filter((s) => need.has(s) && p.work[s] != null);
+      if (!cover.length) continue;
+      if (!best || cover.length > bestCover.length ||
+        (cover.length === bestCover.length && (
+          Math.max(...cover.map((s) => p.work[s])) > Math.max(...bestCover.map((s) => best.work[s])) ||
+          (Math.max(...cover.map((s) => p.work[s])) === Math.max(...bestCover.map((s) => best.work[s])) && p.total > best.total)))) {
+        best = p; bestCover = cover;
+      }
+    }
+    if (!best) break;
+    team.push(best);
+    bestCover.forEach((s) => need.delete(s));
+  }
+  if (need.size) { box.className = "result empty"; box.textContent = `Cannot cover: ${esc(Array.from(need).join(", "))}.`; return; }
+  box.className = "result";
+  box.innerHTML = `<div class="dim"><strong>${team.length}</strong> pals cover <strong>${esc(sel.join(", "))}</strong></div>` +
+    team.map((p) => {
+      const cov = sel.filter((s) => p.work[s] != null).map((s) => `<span class="badge">${esc(s)} Lv${esc(p.work[s])}</span>`).join(" ");
+      return `<div class="pair"><span class="cell-pal clickable" data-pal="${p.code}">${palImg(p, true)}${esc(p.name)}</span>${cov}</div>`;
+    }).join("");
+}
+
+// ---- Chain tab: owned roster + BFS chains ----
+const ROSTER_KEY = "pal-lab-roster";
+function getRoster() {
+  try {
+    const raw = localStorage.getItem(ROSTER_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((c) => typeof c === "string"));
+  } catch (err) { return new Set(); }
+}
+function saveRoster(set) {
+  try { localStorage.setItem(ROSTER_KEY, JSON.stringify(Array.from(set))); } catch (err) {}
+}
+function renderRoster() {
+  const box = $("roster-list");
+  if (!box) return;
+  let set = getRoster();
+  const hasData = PALS && PALS.length > 0;
+  const codes = Array.from(set).filter((c) => !hasData || BY_CODE[c]);
+  if (codes.length !== set.size) { set = new Set(codes); saveRoster(set); }
+  if (!codes.length) { box.innerHTML = '<span class="dim">No owned Pals yet.</span>'; return; }
+  box.innerHTML = codes.map((c) => {
+    const p = BY_CODE[c];
+    const nm = p ? p.name : c;
+    const img = p ? palImg(p, true) : "";
+    return '<span class="roster-pill"><span class="clickable" data-pal="' + esc(c) + '">' + img + esc(nm) + '</span><button class="link" data-rm="' + esc(c) + '" aria-label="Remove ' + esc(nm) + '">x</button></span>';
+  }).join("");
+  box.querySelectorAll("[data-rm]").forEach((b) => {
+    b.onclick = (e) => { if (e.stopPropagation) e.stopPropagation(); removeRoster(b.getAttribute("data-rm")); };
+  });
+}
+function addRosterFromInput() {
+  const inp = $("roster-add");
+  if (!inp) return;
+  const p = resolvePal(inp.value);
+  if (!p) return;
+  const set = getRoster();
+  set.add(p.code);
+  saveRoster(set);
+  inp.value = "";
+  renderRoster();
+}
+function removeRoster(code) {
+  if (!code) return;
+  const set = getRoster();
+  set.delete(code);
+  saveRoster(set);
+  renderRoster();
+}
+function chainStepHtml(s, owned) {
+  const pa = BY_CODE[s.a], pb = BY_CODE[s.b], pc = BY_CODE[s.child];
+  const an = pa ? pa.name : s.a;
+  const bn = pb ? pb.name : s.b;
+  const cn = pc ? pc.name : s.child;
+  const ao = owned && owned.has(s.a) ? "Owned " : "";
+  const bo = owned && owned.has(s.b) ? "Owned " : "";
+  const ai = pa ? palImg(pa, true) : "";
+  const bi = pb ? palImg(pb, true) : "";
+  const ci = pc ? palImg(pc, true) : "";
+  return '<span class="clickable" data-pal="' + esc(s.a) + '">' + ai + esc(ao + an) + '</span> + ' +
+    '<span class="clickable" data-pal="' + esc(s.b) + '">' + bi + esc(bo + bn) + '</span> -&gt; ' +
+    '<span class="clickable" data-pal="' + esc(s.child) + '">' + ci + esc(cn) + '</span>';
+}
+function chainCost(steps) {
+  let s = 0;
+  for (const st of steps) {
+    const pa = BY_CODE[st.a], pb = BY_CODE[st.b];
+    s += (pa ? pa.rarity : 0) + (pa ? pa.power : 0) + (pb ? pb.rarity : 0) + (pb ? pb.power : 0);
+  }
+  return s;
+}
+function doChain() {
+  const box = $("chain-result");
+  if (!box) return;
+  const tInp = $("chain-target");
+  const t = tInp ? resolvePal(tInp.value) : null;
+  if (!t) { box.className = "result empty"; box.textContent = "Pick a valid target Pal."; return; }
+  const owned = getRoster();
+  if (!owned.size) { box.className = "result empty"; box.textContent = "Add at least one owned Pal first."; return; }
+  if (!COMBOS.length) { box.className = "result empty"; box.textContent = "Data still loading, try again."; return; }
+  if (owned.has(t.code)) { box.className = "result"; box.innerHTML = '<div><strong>' + esc(t.name) + '</strong> is already owned.</div>'; return; }
+  const direct = COMBOS.filter((x) => x.child === t.code && owned.has(x.a) && owned.has(x.b)).slice(0, 20);
+  if (direct.length) {
+    box.className = "result";
+    box.innerHTML = '<div class="dim"><strong>' + direct.length + '</strong> direct pair' + (direct.length > 1 ? "s" : "") + ' from roster to <strong>' + esc(t.name) + '</strong></div>' +
+      direct.map((x) => '<div class="chain-path">' + chainStepHtml({ a: x.a, b: x.b, child: x.child }, owned) + '</div>').join("");
+    return;
+  }
+  const reach = new Set(owned);
+  const pathOf = new Map();
+  for (const c of owned) pathOf.set(c, []);
+  for (let d = 0; d < 4; d++) {
+    if (reach.has(t.code)) break;
+    const adds = [];
+    for (const x of COMBOS) {
+      if (reach.has(x.child)) continue;
+      if (!reach.has(x.a) || !reach.has(x.b)) continue;
+      let dup = false;
+      for (const y of adds) { if (y.child === x.child) { dup = true; break; } }
+      if (!dup) adds.push(x);
+    }
+    if (!adds.length) break;
+    for (const x of adds) {
+      const sa = pathOf.get(x.a) || [];
+      const sb = pathOf.get(x.b) || [];
+      const seen = new Set();
+      const steps = [];
+      const all = sa.concat(sb);
+      for (const s of all) { if (!seen.has(s.child)) { seen.add(s.child); steps.push(s); } }
+      steps.push({ a: x.a, b: x.b, child: x.child });
+      pathOf.set(x.child, steps);
+      reach.add(x.child);
+    }
+  }
+  const cands = [];
+  for (const x of COMBOS) {
+    if (x.child !== t.code) continue;
+    if (!reach.has(x.a) || !reach.has(x.b)) continue;
+    const sa = pathOf.get(x.a) || [];
+    const sb = pathOf.get(x.b) || [];
+    const seen = new Set();
+    const steps = [];
+    const all = sa.concat(sb);
+    for (const s of all) { if (!seen.has(s.child)) { seen.add(s.child); steps.push(s); } }
+    steps.push({ a: x.a, b: x.b, child: x.child });
+    cands.push(steps);
+  }
+  cands.sort((p, q) => p.length - q.length || chainCost(p) - chainCost(q));
+  const top = cands.slice(0, 20);
+  if (!top.length) { box.className = "result empty"; box.textContent = "No chain found within 4 steps from your roster."; return; }
+  box.className = "result";
+  box.innerHTML = '<div class="dim"><strong>' + top.length + '</strong> chain' + (top.length > 1 ? "s" : "") + ' to <strong>' + esc(t.name) + '</strong></div>' +
+    top.map((steps, i) => '<div class="chain-path"><div class="dim">Path ' + (i + 1) + ' (' + steps.length + ' breed' + (steps.length > 1 ? "s" : "") + ')</div>' + steps.map((s) => chainStepHtml(s, owned)).join('<div class="dim">then</div>') + '</div>').join("");
 }
 
 // ---- tabs ----
@@ -404,6 +686,42 @@ function switchTab(name) {
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${name}`));
 }
 document.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => switchTab(b.dataset.tab)));
+
+// share URLs: ?tab=breed&a=X&b=Y or ?tab=find&target=Z
+function updateShare() {
+  try {
+    var tabEl = document.querySelector(".panel.active");
+    var tab = tabEl ? tabEl.id.replace("tab-", "") : "";
+    var aEl = $("parentA"), bEl = $("parentB"), tEl = $("target");
+    var a = aEl ? aEl.value.trim() : "";
+    var b = bEl ? bEl.value.trim() : "";
+    var t = tEl ? tEl.value.trim() : "";
+    var q = location.pathname;
+    if (tab === "find" && t) q += "?tab=find&target=" + encodeURIComponent(t);
+    else if (tab === "breed" && (a || b)) q += "?tab=breed&a=" + encodeURIComponent(a) + "&b=" + encodeURIComponent(b);
+    else if (tab) q += "?tab=" + encodeURIComponent(tab);
+    history.replaceState(null, "", q);
+  } catch (err) {}
+}
+function parseShare() {
+  try {
+    var sp = new URLSearchParams(location.search);
+    var a = sp.get("a"), b = sp.get("b"), t = sp.get("target"), tab = sp.get("tab");
+    if (a || b) {
+      if (a && $("parentA")) { var pa = resolvePal(a); $("parentA").value = pa ? pa.name : a; }
+      if (b && $("parentB")) { var pb = resolvePal(b); $("parentB").value = pb ? pb.name : b; }
+      switchTab("breed");
+      doBreed();
+    } else if (t) {
+      var pt = resolvePal(t);
+      if ($("target")) $("target").value = pt ? pt.name : t;
+      switchTab("find");
+      doFind();
+    } else if (tab) {
+      if (["breed", "find", "all", "base", "mounts", "chain"].indexOf(tab) >= 0) switchTab(tab);
+    }
+  } catch (err) {}
+}
 
 // close any open combo panel on outside click
 document.addEventListener("click", (e) => {
@@ -417,9 +735,17 @@ createCombo("parentB", doBreed);
 createCombo("target", doFind);
 $("swap").onclick = () => { const v = $("parentA").value; $("parentA").value = $("parentB").value; $("parentB").value = v; doBreed(); };
 $("only-special").onchange = doFind;
+const findSort = $("find-sort");
+if (findSort) findSort.onchange = doFind;
 $("all-search").addEventListener("input", applyAllFilter);
 $("all-method").onchange = applyAllFilter;
 $("all-element").onchange = applyAllFilter;
+$("all-pelement").onchange = applyAllFilter; // parent element filter
+$("all-work").onchange = applyAllFilter;
+$("all-worklv").onchange = applyAllFilter;
+$("all-egg").onchange = applyAllFilter;
+$("all-size").onchange = applyAllFilter;
+$("all-ride").onchange = applyAllFilter;
 $("all-variant").onchange = applyAllFilter;
 // Teammate-owned filter controls (may not exist yet — guard all).
 (function () {
@@ -465,5 +791,28 @@ document.querySelectorAll(".th-sort").forEach((btn) => {
     renderAll();
   };
 });
+(function () {
+  const bs = $("base-search");
+  if (bs) bs.addEventListener("input", renderBase);
+  const pb = $("plan-base");
+  if (pb) pb.addEventListener("click", planBaseTeam);
+})();
+(function () {
+  const addBtn = $("roster-add-btn");
+  if (addBtn) addBtn.addEventListener("click", addRosterFromInput);
+  const addInp = $("roster-add");
+  if (addInp) addInp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addRosterFromInput(); } });
+  const go = $("chain-go");
+  if (go) go.addEventListener("click", doChain);
+  const tInp = $("chain-target");
+  if (tInp) tInp.addEventListener("keydown", (e) => { if (e.key === "Enter") doChain(); });
+  try {
+    if (typeof createCombo === "function") {
+      if ($("roster-add") && document.getElementById("roster-add-list")) createCombo("roster-add", function () {});
+      if ($("chain-target") && document.getElementById("chain-target-list")) createCombo("chain-target", function () { doChain(); });
+    }
+  } catch (err) {}
+  renderRoster();
+})();
 
 load();

@@ -19,6 +19,9 @@
       <button data-tab="breed" class="active">Breed</button>
       <button data-tab="find">Find parents</button>
       <button data-tab="all">All combos</button>
+      <button data-tab="base">Base</button>
+      <button data-tab="mounts">Mounts</button>
+      <button data-tab="chain">Chain</button>
     </nav>
   </div>
 </header>
@@ -50,7 +53,8 @@
       <p>Target power = <code>floor((A power + B power + 1) / 2)</code>. The game picks the Pal whose
       power is closest to this number. <strong>Special pairs override it</strong> — certain parent
       combinations always produce a fixed child regardless of power. A pair is “special” only when it
-      appears in the special-combo list; everything else follows the formula.</p>
+      appears in the special-combo list; everything else follows the formula. Two Katress x Wixen
+      specials are gender-locked and need a specific female/male order.</p>
       <p class="dim">The species result is guaranteed — target power is <strong>not</strong> a success chance.
       The only percentage shown anywhere is “♂ male rate”.</p>
     </details>
@@ -68,6 +72,7 @@
       </div>
     </div>
     <label class="check"><input type="checkbox" id="only-special" /> Special combos only</label>
+    <label class="check">Sort <select id="find-sort" aria-label="Sort parent pairs"><option value="power">target power</option><option value="easy">easiest first</option></select></label>
     <div id="find-result" class="result empty">Pick a target to list every parent pair.</div>
   </section>
 
@@ -83,9 +88,26 @@
       <select id="all-element" aria-label="Filter by child element">
         <option value="">All elements</option>
       </select>
+      <select id="all-pelement" aria-label="Filter by parent element">
+        <option value="">All parent elements</option>
+        <option value="Neutral">Neutral</option>
+        <option value="Fire">Fire</option>
+        <option value="Water">Water</option>
+        <option value="Grass">Grass</option>
+        <option value="Electric">Electric</option>
+        <option value="Ice">Ice</option>
+        <option value="Ground">Ground</option>
+        <option value="Dark">Dark</option>
+        <option value="Dragon">Dragon</option>
+      </select>
       <label class="check inline"><input type="checkbox" id="all-variant" /> Variants only</label>
       <label class="check inline"><input type="checkbox" id="all-strongest" /> Strongest first</label>
       <select id="all-minrarity" aria-label="Minimum rarity"><option value="0">Any rarity</option><option value="5">Rarity 5+</option><option value="7">Rarity 7+</option><option value="9">Rarity 9+</option><option value="20">Legendary</option></select>
+       <select id="all-work" aria-label="Filter by work suitability"><option value="">Any work</option><option>Handiwork</option><option>Transporting</option><option>Gathering</option><option>Lumbering</option><option>Mining</option><option>Planting</option><option>Watering</option><option>Kindling</option><option>Medicine Production</option><option>Cooling</option><option>Farming</option><option>Generating Electricity</option></select>
+       <select id="all-worklv" aria-label="Minimum work level"><option value="0">Any level</option><option value="2">Lv2+</option><option value="3">Lv3+</option><option value="4">Lv4+</option></select>
+      <select id="all-egg" aria-label="Filter by egg type"><option value="">Any egg</option><option>Common</option><option>Verdant</option><option>Damp</option><option>Scorching</option><option>Frozen</option><option>Rocky</option><option>Dragon</option><option>Electric</option><option>Dark</option></select>
+      <select id="all-size" aria-label="Filter by size"><option value="">Any size</option><option>XS</option><option>S</option><option>M</option><option>L</option><option>XL</option></select>
+      <select id="all-ride" aria-label="Filter by mobility"><option value="">Any mobility</option><option value="rides">Rides only</option><option value="Ground">Ground</option><option value="Flying">Flying</option><option value="Water">Water</option></select>
     </div>
     <div id="all-meta" class="meta"></div>
     <div class="table-wrap"><table>
@@ -94,6 +116,8 @@
         <th><button class="th-sort" data-sort="b">Parent B</button></th>
         <th><button class="th-sort" data-sort="child">Child</button></th>
         <th><button class="th-sort" data-sort="avg">Target power <span class="tip" tabindex="0" data-tip="Target power = floor((A power + B power + 1) / 2). The game picks the Pal whose power is closest to this number (special pairs override it). It is NOT a success chance — the species result is guaranteed.">?</span></button></th>
+        <th><button class="th-sort" data-sort="hp">HP</button></th>
+        <th><button class="th-sort" data-sort="total">Total</button></th>
         <th>Method</th>
       </tr></thead>
       <tbody id="all-body"></tbody>
@@ -103,6 +127,61 @@
       <span id="page-info"></span>
       <button id="next">Next →</button>
     </div>
+  </section>
+  <!-- BASE -->
+  <section id="tab-base" class="panel" aria-label="Best base Pals">
+    <p class="dim">Top Pals per work skill by level then total.</p>
+    <div class="field">
+      <label for="base-search">Filter by work skill</label>
+      <input id="base-search" type="text" placeholder="e.g. Mining" autocomplete="off" />
+    </div>
+    <div id="base-result" class="result empty">Loading base data.</div>
+    <h3>Base-for-XXX planner</h3>
+    <p class="dim">Pick needed skills, then plan the smallest team covering them.</p>
+    <div id="plan-skills">
+      <label class="check inline"><input type="checkbox" value="Kindling" /> Kindling</label>
+      <label class="check inline"><input type="checkbox" value="Watering" /> Watering</label>
+      <label class="check inline"><input type="checkbox" value="Planting" /> Planting</label>
+      <label class="check inline"><input type="checkbox" value="Mining" /> Mining</label>
+      <label class="check inline"><input type="checkbox" value="Handiwork" /> Handiwork</label>
+      <label class="check inline"><input type="checkbox" value="Transporting" /> Transporting</label>
+    </div>
+    <div style="margin-top:8px"><button id="plan-base">Plan team</button></div>
+    <div id="plan-result" class="result empty">Select skills and plan.</div>
+  </section>
+
+  <!-- MOUNTS -->
+  <section id="tab-mounts" class="panel" aria-label="Mount rankings">
+    <p class="dim">Rideable Pals grouped by Ground / Flying / Water, sorted by speed.</p>
+    <div id="mounts-result" class="result empty">Loading mounts.</div>
+  </section>
+
+  <!-- CHAIN -->
+  <section id="tab-chain" class="panel" aria-label="Owned roster and breeding chain">
+    <div class="field">
+      <label id="labelR" for="roster-add">Owned Pals (your roster)</label>
+      <div class="chain-row">
+        <div class="combo" data-combo>
+          <input id="roster-add" type="text" placeholder="e.g. Lamball" autocomplete="off" role="combobox"
+            aria-expanded="false" aria-autocomplete="list" aria-controls="roster-add-list" aria-labelledby="labelR" />
+          <div class="combo-panel" id="roster-add-list" role="listbox" aria-labelledby="labelR" hidden></div>
+        </div>
+        <button id="roster-add-btn">Add</button>
+      </div>
+    </div>
+    <div id="roster-list" class="roster-list"></div>
+    <div class="field">
+      <label id="labelC" for="chain-target">Chain target (Pal you want)</label>
+      <div class="chain-row">
+        <div class="combo" data-combo>
+          <input id="chain-target" type="text" placeholder="e.g. Anubis" autocomplete="off" role="combobox"
+            aria-expanded="false" aria-autocomplete="list" aria-controls="chain-target-list" aria-labelledby="labelC" />
+          <div class="combo-panel" id="chain-target-list" role="listbox" aria-labelledby="labelC" hidden></div>
+        </div>
+        <button id="chain-go">Find chain</button>
+      </div>
+    </div>
+    <div id="chain-result" class="result empty">Add owned Pals, pick a target to see chains.</div>
   </section>
 <div id="pal-modal" class="modal" hidden><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-name"><button id="pm-close" class="modal-x" aria-label="Close">×</button><div id="pm-body"></div></div></div>
 </main>

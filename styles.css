@@ -221,3 +221,17 @@ button.clickable { background: none; border: 0; padding: 0; font: inherit; color
   .modal-card { max-width: 100%; width: 100%; max-height: 92vh; border-radius: 16px 16px 0 0; border-bottom: 0; }
   .kv { grid-template-columns: 84px 1fr; }
 }
+
+/* chain tab */
+.chain-row { display: grid; grid-template-columns: 1fr auto; gap: var(--s1); align-items: end; }
+.chain-row .combo { min-width: 0; }
+#roster-add-btn, #chain-go { height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--txt); cursor: pointer; white-space: nowrap; }
+#roster-add-btn:hover, #chain-go:hover { border-color: var(--acc); color: var(--acc); }
+.roster-list { display: flex; gap: var(--s1); flex-wrap: wrap; margin-top: var(--s1); }
+.roster-pill { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 8px 4px 4px; font-size: 14px; }
+.roster-pill .clickable { display: inline-flex; align-items: center; gap: 6px; }
+.chain-path { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+.chain-path:last-child { border-bottom: 0; }
+.mount-group { margin-bottom: 12px; }
+.base-grid { display: grid; gap: var(--s1); }
+@media (max-width: 640px) { .chain-row { grid-template-columns: 1fr; } }
